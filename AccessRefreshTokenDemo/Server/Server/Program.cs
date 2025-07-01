@@ -1,11 +1,9 @@
-using Server.Middleware;
+using Server.Extensions;
 
 var builder = WebApplication.CreateBuilder(args);
 
-builder.Services.AddControllers();
-builder.Services.AddOpenApi();
-builder.Services.AddExceptionHandler<ExceptionMiddleware>();
-builder.Services.AddProblemDetails();
+builder.Services.AddServices();
+builder.Services.AddCustomServices();
 
 var app = builder.Build();
 
