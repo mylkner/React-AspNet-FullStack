@@ -19,7 +19,7 @@ public class PasswordService : IPasswordService
         );
     }
 
-    public byte[] GenerateSalt(int size = 16)
+    public byte[] GenerateSalt(int size)
     {
         byte[] salt = new byte[size];
         using var rng = RandomNumberGenerator.Create();
