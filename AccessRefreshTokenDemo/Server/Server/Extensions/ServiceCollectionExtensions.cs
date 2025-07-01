@@ -1,3 +1,5 @@
+using Microsoft.EntityFrameworkCore;
+using Server.Data;
 using Server.Middleware;
 using Server.Services;
 using Server.Services.Interfaces;
@@ -12,12 +14,18 @@ public static class ServiceCollectionExtensions
         services.AddOpenApi();
         services.AddExceptionHandler<ExceptionMiddleware>();
         services.AddProblemDetails();
+        services.AddScoped<IAuthService, AuthService>();
         return services;
     }
 
-    public static IServiceCollection AddCustomServices(this IServiceCollection services)
+    public static IServiceCollection AddDb(
+        this IServiceCollection services,
+        IConfiguration configuration
+    )
     {
-        services.AddScoped<IAuthService, AuthService>();
+        services.AddDbContext<AppDbContext>(options =>
+            options.UseSqlServer(configuration.GetConnectionString("DbConnection"))
+        );
         return services;
     }
 }
