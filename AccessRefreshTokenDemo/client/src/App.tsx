@@ -1,5 +1,12 @@
+import { Routes, Route } from "react-router";
+import Login from "./pages/Login";
+
 function App() {
-    return <p className="text-red-500">hello</p>;
+    return (
+        <Routes>
+            <Route path="/" element={<Login />} />
+        </Routes>
+    );
 }
 
 export default App;
