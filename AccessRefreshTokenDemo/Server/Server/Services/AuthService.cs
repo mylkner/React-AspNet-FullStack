@@ -3,7 +3,7 @@ using Server.Services.Interfaces;
 
 namespace Server.Services;
 
-public class PasswordService : IPasswordService
+public class AuthService : IAuthService
 {
     public byte[] HashPassword(string password, byte[] salt)
     {

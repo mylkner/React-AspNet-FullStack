@@ -1,6 +1,6 @@
 namespace Server.Services.Interfaces;
 
-public interface IPasswordService
+public interface IAuthService
 {
     public byte[] HashPassword(string password, byte[] salt);
     public bool VerifyPassword(string inputtedPassword, byte[] hashedPassword, byte[] salt);

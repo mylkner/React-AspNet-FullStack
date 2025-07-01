@@ -17,7 +17,7 @@ public static class ServiceCollectionExtensions
 
     public static IServiceCollection AddCustomServices(this IServiceCollection services)
     {
-        services.AddScoped<IPasswordService, PasswordService>();
+        services.AddScoped<IAuthService, AuthService>();
         return services;
     }
 }
