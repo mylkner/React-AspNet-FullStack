@@ -157,14 +157,14 @@ public class AuthService(AppDbContext db, IConfiguration configuration) : IAuthS
 
         SigningCredentials creds = new(
             new SymmetricSecurityKey(
-                Encoding.UTF8.GetBytes(configuration.GetValue<string>("AppSettings:Key")!)
+                Encoding.UTF8.GetBytes(configuration.GetValue<string>("JWT:Key")!)
             ),
             SecurityAlgorithms.HmacSha512
         );
 
         JwtSecurityToken token = new(
-            issuer: configuration.GetValue<string>("AppSettings:Issuer"),
-            audience: configuration.GetValue<string>("AppSettings:Audience"),
+            issuer: configuration.GetValue<string>("JWT:Issuer"),
+            audience: configuration.GetValue<string>("JWT:Audience"),
             claims: claims,
             expires: DateTime.UtcNow.AddMinutes(30),
             signingCredentials: creds

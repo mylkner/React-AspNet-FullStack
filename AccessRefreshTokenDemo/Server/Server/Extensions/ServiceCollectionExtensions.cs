@@ -44,13 +44,13 @@ public static class ServiceCollectionExtensions
                 options.TokenValidationParameters = new()
                 {
                     ValidateIssuer = true,
-                    ValidIssuers = [configuration.GetValue<string>("AppSettings:Issuer")],
+                    ValidIssuers = [configuration.GetValue<string>("JWT:Issuer")],
                     ValidateAudience = true,
-                    ValidAudiences = [configuration.GetValue<string>("AppSettings:Audience")],
+                    ValidAudiences = [configuration.GetValue<string>("JWT:Audience")],
                     ValidateLifetime = true,
                     ValidateIssuerSigningKey = true,
                     IssuerSigningKey = new SymmetricSecurityKey(
-                        Encoding.UTF8.GetBytes(configuration.GetValue<string>("AppSettings:Key")!)
+                        Encoding.UTF8.GetBytes(configuration.GetValue<string>("JWT:Key")!)
                     ),
                 };
             });
