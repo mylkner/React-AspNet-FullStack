@@ -17,11 +17,11 @@ public class AuthService(AppDbContext db, IConfiguration configuration) : IAuthS
         if (await db.Users.AnyAsync(u => u.Username == req.Username))
             return null;
 
-        byte[] salt = GenerateSalt(16);
+        string salt = GenerateSalt(16);
         User user = new()
         {
             Username = req.Username,
-            HashedPassword = HashPassword(req.PlainPassword, salt),
+            HashedPassword = HashPassword(req.PlainPassword, Convert.FromBase64String(salt)),
             Salt = salt,
         };
 
@@ -34,7 +34,14 @@ public class AuthService(AppDbContext db, IConfiguration configuration) : IAuthS
     public async Task<string?> LoginAsync(UserDto req)
     {
         User? user = await db.Users.FirstOrDefaultAsync(u => u.Username == req.Username);
-        if (user is null || !VerifyPassword(req.PlainPassword, user.HashedPassword, user.Salt))
+        if (
+            user is null
+            || !VerifyPassword(
+                req.PlainPassword,
+                user.HashedPassword,
+                Convert.FromBase64String(user.Salt)
+            )
+        )
             return null;
 
         return GenerateToken(user);
@@ -67,6 +74,14 @@ public class AuthService(AppDbContext db, IConfiguration configuration) : IAuthS
         return new JwtSecurityTokenHandler().WriteToken(token);
     }
 
+    private static string GenerateRefreshToken()
+    {
+        byte[] randomNumber = new byte[32];
+        using var rng = RandomNumberGenerator.Create();
+        rng.GetBytes(randomNumber);
+        return Convert.ToBase64String(randomNumber);
+    }
+
     private static byte[] HashPassword(string password, byte[] salt)
     {
         using Rfc2898DeriveBytes pbkdf2 = new(password, salt, 100000, HashAlgorithmName.SHA512);
@@ -81,11 +96,11 @@ public class AuthService(AppDbContext db, IConfiguration configuration) : IAuthS
         );
     }
 
-    private static byte[] GenerateSalt(int size)
+    private static string GenerateSalt(int size)
     {
         byte[] salt = new byte[size];
         using var rng = RandomNumberGenerator.Create();
         rng.GetBytes(salt);
-        return salt;
+        return Convert.ToBase64String(salt);
     }
 }
