@@ -124,12 +124,16 @@ public class AuthService(AppDbContext db, IConfiguration configuration) : IAuthS
         );
 
         if (userRefreshToken is null)
+        {
+            context.Response.Cookies.Delete("refreshToken");
             return null;
+        }
 
         if (userRefreshToken.Expiry <= DateTime.UtcNow)
         {
             db.UserRefreshTokens.Remove(userRefreshToken);
             await db.SaveChangesAsync();
+            context.Response.Cookies.Delete("refreshToken");
             return null;
         }
 
