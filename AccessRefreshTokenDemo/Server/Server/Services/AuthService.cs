@@ -21,7 +21,9 @@ public class AuthService(AppDbContext db, IConfiguration configuration) : IAuthS
         User user = new()
         {
             Username = req.Username,
-            HashedPassword = HashPassword(req.PlainPassword, Convert.FromBase64String(salt)),
+            HashedPassword = Convert.ToBase64String(
+                HashPassword(req.PlainPassword, Convert.FromBase64String(salt))
+            ),
             Salt = salt,
         };
 
@@ -74,25 +76,17 @@ public class AuthService(AppDbContext db, IConfiguration configuration) : IAuthS
         return new JwtSecurityTokenHandler().WriteToken(token);
     }
 
-    private static string GenerateRefreshToken()
-    {
-        byte[] randomNumber = new byte[32];
-        using var rng = RandomNumberGenerator.Create();
-        rng.GetBytes(randomNumber);
-        return Convert.ToBase64String(randomNumber);
-    }
-
     private static byte[] HashPassword(string password, byte[] salt)
     {
         using Rfc2898DeriveBytes pbkdf2 = new(password, salt, 100000, HashAlgorithmName.SHA512);
         return pbkdf2.GetBytes(32);
     }
 
-    private static bool VerifyPassword(string inputtedPassword, byte[] hashedPassword, byte[] salt)
+    private static bool VerifyPassword(string inputtedPassword, string hashedPassword, byte[] salt)
     {
         return CryptographicOperations.FixedTimeEquals(
             HashPassword(inputtedPassword, salt),
-            hashedPassword
+            Convert.FromBase64String(hashedPassword)
         );
     }
 
