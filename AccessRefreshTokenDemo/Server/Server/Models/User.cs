@@ -7,4 +7,6 @@ public class User
     public byte[] HashedPassword { get; set; } = [];
     public byte[] Salt { get; set; } = [];
     public string Role { get; set; } = string.Empty;
+    public string? RefreshToken { get; set; }
+    public DateTime RefreshTokenExpiry { get; set; }
 }
