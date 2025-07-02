@@ -53,6 +53,8 @@ public class AuthService(AppDbContext db, IConfiguration configuration) : IAuthS
 
     public async Task<User?> LogoutAsync(UserDeviceIdsDto req, HttpContext context)
     {
+        if (context.User.FindFirst(ClaimTypes.NameIdentifier)?.Value != req.UserId)
+            return null;
         if (!Guid.TryParse(req.UserId, out Guid userGuid))
             return null;
 
@@ -80,6 +82,8 @@ public class AuthService(AppDbContext db, IConfiguration configuration) : IAuthS
 
     public async Task<User?> DeleteAsync(DeleteDto req, HttpContext context)
     {
+        if (context.User.FindFirst(ClaimTypes.NameIdentifier)?.Value != req.UserId)
+            return null;
         if (!Guid.TryParse(req.UserId, out Guid userGuid))
             return null;
 

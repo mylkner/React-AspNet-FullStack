@@ -17,7 +17,7 @@ public class AuthController(IAuthService authService) : ControllerBase
         if (user is null)
             return BadRequest("Username already exists.");
 
-        return Ok("User registered successfully.");
+        return Created();
     }
 
     [HttpPost("login")]
@@ -36,9 +36,9 @@ public class AuthController(IAuthService authService) : ControllerBase
     {
         User? user = await authService.LogoutAsync(userDeviceIdsDto, HttpContext);
         if (user is null)
-            return BadRequest("User not found.");
+            return BadRequest("Invalid user ID.");
 
-        return Ok("Logged out successfully.");
+        return NoContent();
     }
 
     [HttpDelete("delete")]
@@ -47,9 +47,9 @@ public class AuthController(IAuthService authService) : ControllerBase
     {
         User? user = await authService.DeleteAsync(deleteDto, HttpContext);
         if (user is null)
-            return BadRequest("User not found.");
+            return BadRequest("Invalid user ID.");
 
-        return Ok("User deleted successfully.");
+        return NoContent();
     }
 
     [HttpPost("refresh-token")]
