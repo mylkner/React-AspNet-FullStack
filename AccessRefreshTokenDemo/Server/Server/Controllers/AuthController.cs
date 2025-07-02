@@ -33,6 +33,16 @@ public class AuthController(IAuthService authService) : ControllerBase
         return Ok(result);
     }
 
+    [HttpPost("refresh-token")]
+    public async Task<ActionResult<TokenResponseDto>> RefreshToken(RefreshTokenRequestDto req)
+    {
+        TokenResponseDto? result = await authService.ValidateAndReplaceRefreshTokenAsync(req);
+        if (result is null)
+            return Unauthorized("Invalid refresh token.");
+
+        return Ok(result);
+    }
+
     [HttpGet]
     [Authorize]
     public IActionResult AuthEndpoint()

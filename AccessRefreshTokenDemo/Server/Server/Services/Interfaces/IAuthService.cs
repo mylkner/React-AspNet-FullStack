@@ -7,4 +7,5 @@ public interface IAuthService
 {
     public Task<User?> RegisterAsync(UserDto req);
     public Task<TokenResponseDto?> LoginAsync(UserDto req, string deviceId);
+    public Task<TokenResponseDto?> ValidateAndReplaceRefreshTokenAsync(RefreshTokenRequestDto req);
 }

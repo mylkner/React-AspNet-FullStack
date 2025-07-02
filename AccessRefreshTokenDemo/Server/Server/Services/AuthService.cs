@@ -54,6 +54,41 @@ public class AuthService(AppDbContext db, IConfiguration configuration) : IAuthS
         };
     }
 
+    public async Task<TokenResponseDto?> ValidateAndReplaceRefreshTokenAsync(
+        RefreshTokenRequestDto req
+    )
+    {
+        User? user = await db
+            .Users.Include(u => u.RefreshTokens)
+            .FirstOrDefaultAsync(u => u.Id.ToString() == req.UserId);
+
+        if (user is null)
+            return null;
+
+        UserRefreshToken? userRefreshToken = user.RefreshTokens.FirstOrDefault(rt =>
+            rt.DeviceId == req.DeviceId && rt.RefreshToken == req.RefreshToken
+        );
+
+        if (userRefreshToken is null)
+            return null;
+
+        if (userRefreshToken.Expiry <= DateTime.UtcNow)
+        {
+            db.UserRefreshTokens.Remove(userRefreshToken);
+            await db.SaveChangesAsync();
+            return null;
+        }
+
+        userRefreshToken.RefreshToken = GenerateRandomString(32);
+        await db.SaveChangesAsync();
+
+        return new()
+        {
+            AccessToken = GenerateToken(user),
+            RefreshToken = userRefreshToken.RefreshToken,
+        };
+    }
+
     private async Task<string> GenerateAndSaveRefreshTokenAsync(User user, string deviceId)
     {
         string refreshToken = GenerateRandomString(32);
@@ -96,6 +131,15 @@ public class AuthService(AppDbContext db, IConfiguration configuration) : IAuthS
         );
 
         return new JwtSecurityTokenHandler().WriteToken(token);
+    }
+
+    private async Task<TokenResponseDto> CreateTokenResponseAsync(User user, string deviceId)
+    {
+        return new()
+        {
+            AccessToken = GenerateToken(user),
+            RefreshToken = await GenerateAndSaveRefreshTokenAsync(user, deviceId),
+        };
     }
 
     private static byte[] HashPassword(string password, byte[] salt)
