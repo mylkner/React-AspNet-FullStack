@@ -35,4 +35,11 @@ public class AuthController(IAuthService authService) : ControllerBase
     {
         return Ok("This is the auth endpoint.");
     }
+
+    [HttpGet("admin")]
+    [Authorize(Roles = "Admin")]
+    public IActionResult AdminEndpoint()
+    {
+        return Ok("This is the admin endpoint.");
+    }
 }
