@@ -92,9 +92,9 @@ public class AuthService(AppDbContext db, IConfiguration configuration) : IAuthS
 
     private static string GenerateRandomString(int size)
     {
-        byte[] salt = new byte[size];
+        byte[] rand = new byte[size];
         using var rng = RandomNumberGenerator.Create();
-        rng.GetBytes(salt);
-        return Convert.ToBase64String(salt);
+        rng.GetBytes(rand);
+        return Convert.ToBase64String(rand);
     }
 }
