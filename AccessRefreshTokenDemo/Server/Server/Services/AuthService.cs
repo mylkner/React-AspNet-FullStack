@@ -2,39 +2,51 @@ using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
 using System.Security.Cryptography;
 using System.Text;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
+using Server.Data;
 using Server.Models;
 using Server.Services.Interfaces;
 
 namespace Server.Services;
 
-public class AuthService(IConfiguration configuration) : IAuthService
+public class AuthService(AppDbContext db, IConfiguration configuration) : IAuthService
 {
-    public byte[] HashPassword(string password, byte[] salt)
+    public async Task<User?> RegisterAsync(UserDto req)
     {
-        using Rfc2898DeriveBytes pbkdf2 = new(password, salt, 100000, HashAlgorithmName.SHA512);
-        return pbkdf2.GetBytes(32);
+        if (await db.Users.AnyAsync(u => u.Username == req.Username))
+            return null;
+
+        byte[] salt = GenerateSalt(16);
+        User user = new()
+        {
+            Username = req.Username,
+            HashedPassword = HashPassword(req.PlainPassword, salt),
+            Salt = salt,
+        };
+
+        db.Users.Add(user);
+        await db.SaveChangesAsync();
+
+        return user;
     }
 
-    public bool VerifyPassword(string inputtedPassword, byte[] hashedPassword, byte[] salt)
+    public async Task<string?> LoginAsync(UserDto req)
     {
-        return CryptographicOperations.FixedTimeEquals(
-            HashPassword(inputtedPassword, salt),
-            hashedPassword
-        );
+        User? user = await db.Users.FirstOrDefaultAsync(u => u.Username == req.Username);
+        if (user is null || !VerifyPassword(req.PlainPassword, user.HashedPassword, user.Salt))
+            return null;
+
+        return GenerateToken(user);
     }
 
-    public byte[] GenerateSalt(int size)
+    private string GenerateToken(User user)
     {
-        byte[] salt = new byte[size];
-        using var rng = RandomNumberGenerator.Create();
-        rng.GetBytes(salt);
-        return salt;
-    }
-
-    public string GenerateToken(User user)
-    {
-        List<Claim> claims = [new Claim(ClaimTypes.Name, user.Username)];
+        List<Claim> claims =
+        [
+            new Claim(ClaimTypes.NameIdentifier, user.Id.ToString()),
+            new Claim(ClaimTypes.Name, user.Username),
+        ];
 
         SigningCredentials creds = new(
             new SymmetricSecurityKey(
@@ -52,5 +64,27 @@ public class AuthService(IConfiguration configuration) : IAuthService
         );
 
         return new JwtSecurityTokenHandler().WriteToken(token);
+    }
+
+    private static byte[] HashPassword(string password, byte[] salt)
+    {
+        using Rfc2898DeriveBytes pbkdf2 = new(password, salt, 100000, HashAlgorithmName.SHA512);
+        return pbkdf2.GetBytes(32);
+    }
+
+    private static bool VerifyPassword(string inputtedPassword, byte[] hashedPassword, byte[] salt)
+    {
+        return CryptographicOperations.FixedTimeEquals(
+            HashPassword(inputtedPassword, salt),
+            hashedPassword
+        );
+    }
+
+    private static byte[] GenerateSalt(int size)
+    {
+        byte[] salt = new byte[size];
+        using var rng = RandomNumberGenerator.Create();
+        rng.GetBytes(salt);
+        return salt;
     }
 }
