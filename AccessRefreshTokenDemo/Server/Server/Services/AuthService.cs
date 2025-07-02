@@ -166,7 +166,7 @@ public class AuthService(AppDbContext db, IConfiguration configuration) : IAuthS
             issuer: configuration.GetValue<string>("JWT:Issuer"),
             audience: configuration.GetValue<string>("JWT:Audience"),
             claims: claims,
-            expires: DateTime.UtcNow.AddMinutes(30),
+            expires: DateTime.UtcNow.AddHours(1),
             signingCredentials: creds
         );
 
