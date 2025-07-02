@@ -17,7 +17,7 @@ public class AuthService(AppDbContext db, IConfiguration configuration) : IAuthS
         if (await db.Users.AnyAsync(u => u.Username == req.Username))
             return null;
 
-        string salt = GenerateSalt(16);
+        string salt = GenerateRandomString(16);
         User user = new()
         {
             Username = req.Username,
@@ -90,7 +90,7 @@ public class AuthService(AppDbContext db, IConfiguration configuration) : IAuthS
         );
     }
 
-    private static string GenerateSalt(int size)
+    private static string GenerateRandomString(int size)
     {
         byte[] salt = new byte[size];
         using var rng = RandomNumberGenerator.Create();
