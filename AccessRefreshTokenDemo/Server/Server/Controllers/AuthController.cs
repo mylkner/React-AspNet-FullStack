@@ -8,12 +8,13 @@ namespace Server.Controllers;
 
 [ApiController]
 [Route("api/auth")]
-public class AuthController(IAuthService authService) : ControllerBase
+public class AuthController(IAuthService authService, IHttpContextAccessor httpContext)
+    : ControllerBase
 {
     [HttpPost("register")]
-    public async Task<ActionResult<string>> Register(LoginDto loginDto)
+    public async Task<ActionResult<string>> Register(RegisterDto registerDto)
     {
-        User? user = await authService.RegisterAsync(loginDto);
+        User? user = await authService.RegisterAsync(registerDto);
         if (user is null)
             return BadRequest("Username already exists.");
 
@@ -21,42 +22,30 @@ public class AuthController(IAuthService authService) : ControllerBase
     }
 
     [HttpPost("login")]
-    public async Task<ActionResult<TokenResponseDto>> Login(
-        LoginDto loginDto,
-        [FromHeader(Name = "Device-Id")] string deviceId
-    )
+    public async Task<ActionResult<string>> Login(LoginDto loginDto)
     {
-        TokenResponseDto? result = await authService.LoginAsync(loginDto, deviceId);
-        if (result is null)
+        string? jwt = await authService.LoginAsync(loginDto);
+        if (jwt is null)
             return BadRequest("Invalid username or password.");
 
-        return Ok(result);
+        return Ok(jwt);
     }
 
     [HttpPost("refresh-token")]
-    public async Task<ActionResult<TokenResponseDto>> RefreshToken(
-        RefreshTokenDto refreshTokenDto,
-        [FromHeader(Name = "Device-Id")] string deviceId
-    )
+    public async Task<ActionResult<string>> RefreshToken(UserDeviceIdsDto userDeviceIdsDto)
     {
-        TokenResponseDto? result = await authService.ValidateAndReplaceRefreshTokenAsync(
-            refreshTokenDto,
-            deviceId
-        );
-        if (result is null)
+        string? jwt = await authService.ValidateAndReplaceRefreshTokenAsync(userDeviceIdsDto);
+        if (jwt is null)
             return Unauthorized("Invalid refresh token.");
 
-        return Ok(result);
+        return Ok(jwt);
     }
 
     [HttpPost("logout")]
     [Authorize]
-    public async Task<ActionResult<string>> Logout(
-        string userId,
-        [FromHeader(Name = "Device-Id")] string deviceId
-    )
+    public async Task<ActionResult<string>> Logout(UserDeviceIdsDto userDeviceIdsDto)
     {
-        User? user = await authService.LogoutAsync(userId, deviceId);
+        User? user = await authService.LogoutAsync(userDeviceIdsDto);
         if (user is null)
             return BadRequest("User not found.");
 
@@ -65,9 +54,9 @@ public class AuthController(IAuthService authService) : ControllerBase
 
     [HttpPost("delete")]
     [Authorize]
-    public async Task<ActionResult<string>> Delete(string userId)
+    public async Task<ActionResult<string>> Delete(DeleteDto deleteDto)
     {
-        User? user = await authService.DeleteAsync(userId);
+        User? user = await authService.DeleteAsync(deleteDto);
         if (user is null)
             return BadRequest("User not found.");
 

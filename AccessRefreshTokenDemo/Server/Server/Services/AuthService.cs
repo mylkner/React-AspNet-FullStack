@@ -2,6 +2,7 @@ using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
 using System.Security.Cryptography;
 using System.Text;
+using Azure;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 using Server.Data;
@@ -13,7 +14,7 @@ namespace Server.Services;
 
 public class AuthService(AppDbContext db, IConfiguration configuration) : IAuthService
 {
-    public async Task<User?> RegisterAsync(LoginDto req)
+    public async Task<User?> RegisterAsync(RegisterDto req)
     {
         if (await db.Users.AnyAsync(u => u.Username == req.Username))
             return null;
@@ -35,7 +36,7 @@ public class AuthService(AppDbContext db, IConfiguration configuration) : IAuthS
         return user;
     }
 
-    public async Task<TokenResponseDto?> LoginAsync(LoginDto req, string deviceId)
+    public async Task<string?> LoginAsync(LoginDto req)
     {
         User? user = await db.Users.FirstOrDefaultAsync(u => u.Username == req.Username);
         if (
@@ -47,18 +48,11 @@ public class AuthService(AppDbContext db, IConfiguration configuration) : IAuthS
             )
         )
             return null;
-
-        return new()
-        {
-            AccessToken = GenerateToken(user),
-            RefreshToken = await GenerateAndSaveRefreshTokenAsync(user, deviceId),
-        };
+        string refreshToken = await GenerateAndSaveRefreshTokenAsync(user, req.DeviceId);
+        return GenerateToken(user);
     }
 
-    public async Task<TokenResponseDto?> ValidateAndReplaceRefreshTokenAsync(
-        RefreshTokenDto req,
-        string deviceId
-    )
+    public async Task<string?> ValidateAndReplaceRefreshTokenAsync(UserDeviceIdsDto req)
     {
         if (!Guid.TryParse(req.UserId, out Guid userGuid))
             return null;
@@ -71,7 +65,7 @@ public class AuthService(AppDbContext db, IConfiguration configuration) : IAuthS
             return null;
 
         UserRefreshToken? userRefreshToken = user.RefreshTokens.FirstOrDefault(rt =>
-            rt.DeviceId == deviceId && rt.RefreshToken == req.RefreshToken
+            rt.DeviceId == req.DeviceId && rt.RefreshToken == "refreshToken"
         );
 
         if (userRefreshToken is null)
@@ -87,16 +81,12 @@ public class AuthService(AppDbContext db, IConfiguration configuration) : IAuthS
         userRefreshToken.RefreshToken = GenerateRandomString(32);
         await db.SaveChangesAsync();
 
-        return new()
-        {
-            AccessToken = GenerateToken(user),
-            RefreshToken = userRefreshToken.RefreshToken,
-        };
+        return GenerateToken(user);
     }
 
-    public async Task<User?> LogoutAsync(string userId, string deviceId)
+    public async Task<User?> LogoutAsync(UserDeviceIdsDto req)
     {
-        if (!Guid.TryParse(userId, out Guid userGuid))
+        if (!Guid.TryParse(req.UserId, out Guid userGuid))
             return null;
 
         User? user = await db
@@ -107,7 +97,7 @@ public class AuthService(AppDbContext db, IConfiguration configuration) : IAuthS
             return null;
 
         UserRefreshToken? userRefreshToken = user.RefreshTokens.FirstOrDefault(rt =>
-            rt.DeviceId == deviceId
+            rt.DeviceId == req.DeviceId
         );
 
         if (userRefreshToken is not null)
@@ -119,9 +109,9 @@ public class AuthService(AppDbContext db, IConfiguration configuration) : IAuthS
         return user;
     }
 
-    public async Task<User?> DeleteAsync(string userId)
+    public async Task<User?> DeleteAsync(DeleteDto req)
     {
-        if (!Guid.TryParse(userId, out Guid userGuid))
+        if (!Guid.TryParse(req.UserId, out Guid userGuid))
             return null;
 
         User? user = await db.Users.FindAsync(userGuid);
@@ -182,6 +172,19 @@ public class AuthService(AppDbContext db, IConfiguration configuration) : IAuthS
         );
 
         return new JwtSecurityTokenHandler().WriteToken(token);
+    }
+
+    private static void SetRefreshCookie(HttpContext context, string refreshToken, string deviceId)
+    {
+        CookieOptions options = new()
+        {
+            HttpOnly = true,
+            Secure = true,
+            SameSite = SameSiteMode.Lax,
+            Expires = DateTime.UtcNow.AddDays(7),
+        };
+
+        context.Response.Cookies.Append("RefreshToken", refreshToken, options);
     }
 
     private static byte[] HashPassword(string password, byte[] salt)
