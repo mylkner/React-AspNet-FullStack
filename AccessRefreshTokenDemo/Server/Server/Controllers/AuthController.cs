@@ -20,13 +20,13 @@ public class AuthController(IAuthService authService) : ControllerBase
     }
 
     [HttpPost("login")]
-    public async Task<ActionResult<string>> Login(UserDto req)
+    public async Task<ActionResult<TokenResponseDto>> Login(UserDto req)
     {
-        string? token = await authService.LoginAsync(req);
-        if (token is null)
+        TokenResponseDto? result = await authService.LoginAsync(req);
+        if (result is null)
             return BadRequest("Invalid username or password.");
 
-        return Ok(token);
+        return Ok(result);
     }
 
     [HttpGet]

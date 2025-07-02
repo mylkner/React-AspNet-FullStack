@@ -33,7 +33,7 @@ public class AuthService(AppDbContext db, IConfiguration configuration) : IAuthS
         return user;
     }
 
-    public async Task<string?> LoginAsync(UserDto req)
+    public async Task<TokenResponseDto?> LoginAsync(UserDto req)
     {
         User? user = await db.Users.FirstOrDefaultAsync(u => u.Username == req.Username);
         if (
@@ -46,7 +46,20 @@ public class AuthService(AppDbContext db, IConfiguration configuration) : IAuthS
         )
             return null;
 
-        return GenerateToken(user);
+        return new()
+        {
+            AccessToken = GenerateToken(user),
+            RefreshToken = await GenerateAndSaveRefreshTokenAsync(user),
+        };
+    }
+
+    private async Task<string> GenerateAndSaveRefreshTokenAsync(User user)
+    {
+        string refreshToken = GenerateRandomString(32);
+        user.RefreshToken = refreshToken;
+        user.RefreshTokenExpiry = DateTime.UtcNow.AddDays(7);
+        await db.SaveChangesAsync();
+        return refreshToken;
     }
 
     private string GenerateToken(User user)
