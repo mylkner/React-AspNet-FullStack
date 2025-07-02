@@ -120,7 +120,7 @@ public class AuthService(AppDbContext db, IConfiguration configuration) : IAuthS
             return null;
 
         UserRefreshToken? userRefreshToken = user.RefreshTokens.FirstOrDefault(rt =>
-            rt.DeviceId == req.DeviceId && rt.RefreshToken == refreshToken
+            rt.DeviceId == req.DeviceId
         );
 
         if (userRefreshToken is null)
@@ -129,7 +129,10 @@ public class AuthService(AppDbContext db, IConfiguration configuration) : IAuthS
             return null;
         }
 
-        if (userRefreshToken.Expiry <= DateTime.UtcNow)
+        if (
+            userRefreshToken.Expiry <= DateTime.UtcNow
+            || userRefreshToken.RefreshToken != refreshToken
+        )
         {
             db.UserRefreshTokens.Remove(userRefreshToken);
             await db.SaveChangesAsync();
