@@ -2,6 +2,7 @@ using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
 using System.Security.Cryptography;
 using System.Text;
+using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 using Server.Data;
@@ -34,7 +35,7 @@ public class AuthService(AppDbContext db, IConfiguration configuration) : IAuthS
         return user;
     }
 
-    public async Task<TokenResponseDto?> LoginAsync(UserDto req)
+    public async Task<TokenResponseDto?> LoginAsync(UserDto req, string deviceId)
     {
         User? user = await db.Users.FirstOrDefaultAsync(u => u.Username == req.Username);
         if (
@@ -50,7 +51,7 @@ public class AuthService(AppDbContext db, IConfiguration configuration) : IAuthS
         return new()
         {
             AccessToken = GenerateToken(user),
-            RefreshToken = await GenerateAndSaveRefreshTokenAsync(user, req.DeviceId),
+            RefreshToken = await GenerateAndSaveRefreshTokenAsync(user, deviceId),
         };
     }
 

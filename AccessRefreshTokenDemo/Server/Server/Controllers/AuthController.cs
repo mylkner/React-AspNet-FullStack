@@ -21,9 +21,12 @@ public class AuthController(IAuthService authService) : ControllerBase
     }
 
     [HttpPost("login")]
-    public async Task<ActionResult<TokenResponseDto>> Login(UserDto req)
+    public async Task<ActionResult<TokenResponseDto>> Login(
+        UserDto req,
+        [FromHeader(Name = "Device-Id")] string deviceId
+    )
     {
-        TokenResponseDto? result = await authService.LoginAsync(req);
+        TokenResponseDto? result = await authService.LoginAsync(req, deviceId);
         if (result is null)
             return BadRequest("Invalid username or password.");
 
