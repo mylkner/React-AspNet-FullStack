@@ -1,9 +1,9 @@
+using Scalar.AspNetCore;
 using Server.Extensions;
 
 var builder = WebApplication.CreateBuilder(args);
 
-builder.Services.AddServices();
-builder.Services.AddDb(builder.Configuration);
+builder.Services.AddAllServices(builder.Configuration);
 
 var app = builder.Build();
 
@@ -12,12 +12,11 @@ app.UseExceptionHandler();
 if (app.Environment.IsDevelopment())
 {
     app.MapOpenApi();
-    app.UseSwaggerUi(opt =>
-    {
-        opt.DocumentPath = "openapi/v1.json";
-    });
+    app.MapScalarApiReference();
 }
 
 app.UseHttpsRedirection();
+app.UseAuthentication();
+app.UseAuthorization();
 app.MapControllers();
 app.Run();
