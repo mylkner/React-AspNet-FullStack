@@ -41,7 +41,7 @@ public class AuthController(IAuthService authService) : ControllerBase
         return Ok("Logged out successfully.");
     }
 
-    [HttpPost("delete")]
+    [HttpDelete("delete")]
     [Authorize]
     public async Task<ActionResult<string>> Delete(DeleteDto deleteDto)
     {
