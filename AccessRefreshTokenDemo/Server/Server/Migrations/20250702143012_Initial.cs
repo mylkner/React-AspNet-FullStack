@@ -18,19 +18,19 @@ namespace Server.Migrations
                     Id = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
                     Username = table.Column<string>(type: "nvarchar(max)", nullable: false),
                     HashedPassword = table.Column<byte[]>(type: "varbinary(max)", nullable: false),
-                    Salt = table.Column<byte[]>(type: "varbinary(max)", nullable: false)
+                    Salt = table.Column<byte[]>(type: "varbinary(max)", nullable: false),
                 },
                 constraints: table =>
                 {
                     table.PrimaryKey("PK_Users", x => x.Id);
-                });
+                }
+            );
         }
 
         /// <inheritdoc />
         protected override void Down(MigrationBuilder migrationBuilder)
         {
-            migrationBuilder.DropTable(
-                name: "Users");
+            migrationBuilder.DropTable(name: "Users");
         }
     }
 }
