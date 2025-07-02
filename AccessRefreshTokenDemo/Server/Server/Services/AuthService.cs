@@ -2,7 +2,6 @@ using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
 using System.Security.Cryptography;
 using System.Text;
-using Azure;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 using Server.Data;
@@ -36,7 +35,7 @@ public class AuthService(AppDbContext db, IConfiguration configuration) : IAuthS
         return user;
     }
 
-    public async Task<string?> LoginAsync(LoginDto req)
+    public async Task<string?> LoginAsync(LoginDto req, HttpContext context)
     {
         User? user = await db.Users.FirstOrDefaultAsync(u => u.Username == req.Username);
         if (
@@ -48,43 +47,11 @@ public class AuthService(AppDbContext db, IConfiguration configuration) : IAuthS
             )
         )
             return null;
-        string refreshToken = await GenerateAndSaveRefreshTokenAsync(user, req.DeviceId);
+        SetRefreshCookie(context, await GenerateAndSaveRefreshTokenAsync(user, req.DeviceId));
         return GenerateToken(user);
     }
 
-    public async Task<string?> ValidateAndReplaceRefreshTokenAsync(UserDeviceIdsDto req)
-    {
-        if (!Guid.TryParse(req.UserId, out Guid userGuid))
-            return null;
-
-        User? user = await db
-            .Users.Include(u => u.RefreshTokens)
-            .FirstOrDefaultAsync(u => u.Id == userGuid);
-
-        if (user is null)
-            return null;
-
-        UserRefreshToken? userRefreshToken = user.RefreshTokens.FirstOrDefault(rt =>
-            rt.DeviceId == req.DeviceId && rt.RefreshToken == "refreshToken"
-        );
-
-        if (userRefreshToken is null)
-            return null;
-
-        if (userRefreshToken.Expiry <= DateTime.UtcNow)
-        {
-            db.UserRefreshTokens.Remove(userRefreshToken);
-            await db.SaveChangesAsync();
-            return null;
-        }
-
-        userRefreshToken.RefreshToken = GenerateRandomString(32);
-        await db.SaveChangesAsync();
-
-        return GenerateToken(user);
-    }
-
-    public async Task<User?> LogoutAsync(UserDeviceIdsDto req)
+    public async Task<User?> LogoutAsync(UserDeviceIdsDto req, HttpContext context)
     {
         if (!Guid.TryParse(req.UserId, out Guid userGuid))
             return null;
@@ -106,10 +73,12 @@ public class AuthService(AppDbContext db, IConfiguration configuration) : IAuthS
             await db.SaveChangesAsync();
         }
 
+        context.Response.Cookies.Delete("refreshToken");
+
         return user;
     }
 
-    public async Task<User?> DeleteAsync(DeleteDto req)
+    public async Task<User?> DeleteAsync(DeleteDto req, HttpContext context)
     {
         if (!Guid.TryParse(req.UserId, out Guid userGuid))
             return null;
@@ -127,24 +96,47 @@ public class AuthService(AppDbContext db, IConfiguration configuration) : IAuthS
         db.Users.Remove(user);
         await db.SaveChangesAsync();
 
+        context.Response.Cookies.Delete("refreshToken");
+
         return user;
     }
 
-    private async Task<string> GenerateAndSaveRefreshTokenAsync(User user, string deviceId)
+    public async Task<string?> ValidateAndReplaceRefreshTokenAsync(
+        UserDeviceIdsDto req,
+        HttpContext context
+    )
     {
-        string refreshToken = GenerateRandomString(32);
+        if (!Guid.TryParse(req.UserId, out Guid userGuid))
+            return null;
 
-        UserRefreshToken userRefreshToken = new()
+        User? user = await db
+            .Users.Include(u => u.RefreshTokens)
+            .FirstOrDefaultAsync(u => u.Id == userGuid);
+        if (user is null)
+            return null;
+
+        string? refreshToken = context.Request.Cookies["refreshToken"];
+        if (string.IsNullOrEmpty(refreshToken))
+            return null;
+
+        UserRefreshToken? userRefreshToken = user.RefreshTokens.FirstOrDefault(rt =>
+            rt.DeviceId == req.DeviceId && rt.RefreshToken == refreshToken
+        );
+
+        if (userRefreshToken is null)
+            return null;
+
+        if (userRefreshToken.Expiry <= DateTime.UtcNow)
         {
-            DeviceId = deviceId,
-            RefreshToken = refreshToken,
-            Expiry = DateTime.UtcNow.AddDays(7),
-            User = user,
-        };
+            db.UserRefreshTokens.Remove(userRefreshToken);
+            await db.SaveChangesAsync();
+            return null;
+        }
 
-        db.UserRefreshTokens.Add(userRefreshToken);
+        userRefreshToken.RefreshToken = GenerateRandomString(32);
         await db.SaveChangesAsync();
-        return refreshToken;
+        SetRefreshCookie(context, userRefreshToken.RefreshToken);
+        return GenerateToken(user);
     }
 
     private string GenerateToken(User user)
@@ -174,17 +166,46 @@ public class AuthService(AppDbContext db, IConfiguration configuration) : IAuthS
         return new JwtSecurityTokenHandler().WriteToken(token);
     }
 
-    private static void SetRefreshCookie(HttpContext context, string refreshToken, string deviceId)
+    private async Task<string> GenerateAndSaveRefreshTokenAsync(User user, string deviceId)
     {
-        CookieOptions options = new()
+        UserRefreshToken? existingToken = await db.UserRefreshTokens.FirstOrDefaultAsync(rt =>
+            rt.DeviceId == deviceId && rt.User.Id == user.Id
+        );
+
+        if (existingToken is not null)
         {
-            HttpOnly = true,
-            Secure = true,
-            SameSite = SameSiteMode.Lax,
-            Expires = DateTime.UtcNow.AddDays(7),
+            db.UserRefreshTokens.Remove(existingToken);
+            await db.SaveChangesAsync();
+        }
+
+        string refreshToken = GenerateRandomString(32);
+
+        UserRefreshToken userRefreshToken = new()
+        {
+            DeviceId = deviceId,
+            RefreshToken = refreshToken,
+            Expiry = DateTime.UtcNow.AddDays(7),
+            User = user,
         };
 
-        context.Response.Cookies.Append("RefreshToken", refreshToken, options);
+        db.UserRefreshTokens.Add(userRefreshToken);
+        await db.SaveChangesAsync();
+        return refreshToken;
+    }
+
+    private static void SetRefreshCookie(HttpContext context, string refreshToken)
+    {
+        context.Response.Cookies.Append(
+            "refreshToken",
+            refreshToken,
+            new CookieOptions
+            {
+                HttpOnly = true,
+                Secure = true,
+                SameSite = SameSiteMode.None,
+                Expires = DateTimeOffset.UtcNow.AddDays(7),
+            }
+        );
     }
 
     private static byte[] HashPassword(string password, byte[] salt)

@@ -8,8 +8,7 @@ namespace Server.Controllers;
 
 [ApiController]
 [Route("api/auth")]
-public class AuthController(IAuthService authService, IHttpContextAccessor httpContext)
-    : ControllerBase
+public class AuthController(IAuthService authService) : ControllerBase
 {
     [HttpPost("register")]
     public async Task<ActionResult<string>> Register(RegisterDto registerDto)
@@ -24,19 +23,9 @@ public class AuthController(IAuthService authService, IHttpContextAccessor httpC
     [HttpPost("login")]
     public async Task<ActionResult<string>> Login(LoginDto loginDto)
     {
-        string? jwt = await authService.LoginAsync(loginDto);
+        string? jwt = await authService.LoginAsync(loginDto, HttpContext);
         if (jwt is null)
             return BadRequest("Invalid username or password.");
-
-        return Ok(jwt);
-    }
-
-    [HttpPost("refresh-token")]
-    public async Task<ActionResult<string>> RefreshToken(UserDeviceIdsDto userDeviceIdsDto)
-    {
-        string? jwt = await authService.ValidateAndReplaceRefreshTokenAsync(userDeviceIdsDto);
-        if (jwt is null)
-            return Unauthorized("Invalid refresh token.");
 
         return Ok(jwt);
     }
@@ -45,7 +34,7 @@ public class AuthController(IAuthService authService, IHttpContextAccessor httpC
     [Authorize]
     public async Task<ActionResult<string>> Logout(UserDeviceIdsDto userDeviceIdsDto)
     {
-        User? user = await authService.LogoutAsync(userDeviceIdsDto);
+        User? user = await authService.LogoutAsync(userDeviceIdsDto, HttpContext);
         if (user is null)
             return BadRequest("User not found.");
 
@@ -56,11 +45,24 @@ public class AuthController(IAuthService authService, IHttpContextAccessor httpC
     [Authorize]
     public async Task<ActionResult<string>> Delete(DeleteDto deleteDto)
     {
-        User? user = await authService.DeleteAsync(deleteDto);
+        User? user = await authService.DeleteAsync(deleteDto, HttpContext);
         if (user is null)
             return BadRequest("User not found.");
 
         return Ok("User deleted successfully.");
+    }
+
+    [HttpPost("refresh-token")]
+    public async Task<ActionResult<string>> RefreshToken(UserDeviceIdsDto userDeviceIdsDto)
+    {
+        string? jwt = await authService.ValidateAndReplaceRefreshTokenAsync(
+            userDeviceIdsDto,
+            HttpContext
+        );
+        if (jwt is null)
+            return Unauthorized("Invalid refresh token.");
+
+        return Ok(jwt);
     }
 
     [HttpGet]
