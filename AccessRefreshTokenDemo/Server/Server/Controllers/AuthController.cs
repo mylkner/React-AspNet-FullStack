@@ -7,7 +7,7 @@ namespace Server.Controllers;
 
 [ApiController]
 [Route("api/auth")]
-public class AuthController(IAuthService authService, IConfiguration configuration) : ControllerBase
+public class AuthController(IAuthService authService) : ControllerBase
 {
     private static User? _user;
 
