@@ -6,6 +6,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 using Server.Data;
 using Server.Models;
+using Server.Models.DTOs;
 using Server.Services.Interfaces;
 
 namespace Server.Services;

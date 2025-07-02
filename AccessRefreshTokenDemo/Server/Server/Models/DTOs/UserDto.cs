@@ -1,4 +1,4 @@
-namespace Server.Models;
+namespace Server.Models.DTOs;
 
 public class UserDto
 {
