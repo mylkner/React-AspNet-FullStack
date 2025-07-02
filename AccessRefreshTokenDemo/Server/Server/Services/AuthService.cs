@@ -50,17 +50,17 @@ public class AuthService(AppDbContext db, IConfiguration configuration) : IAuthS
         return new()
         {
             AccessToken = GenerateToken(user),
-            RefreshToken = await GenerateAndSaveRefreshTokenAsync(user),
+            RefreshToken = await GenerateAndSaveRefreshTokenAsync(user, req.DeviceId),
         };
     }
 
-    private async Task<string> GenerateAndSaveRefreshTokenAsync(User user)
+    private async Task<string> GenerateAndSaveRefreshTokenAsync(User user, string deviceId)
     {
         string refreshToken = GenerateRandomString(32);
 
         UserRefreshToken userRefreshToken = new()
         {
-            DeviceId = Guid.NewGuid().ToString(),
+            DeviceId = deviceId,
             RefreshToken = refreshToken,
             Expiry = DateTime.UtcNow.AddDays(7),
             User = user,
