@@ -1,4 +1,4 @@
-using System.Threading.Tasks;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Server.Models;
 using Server.Services.Interfaces;
@@ -27,5 +27,12 @@ public class AuthController(IAuthService authService) : ControllerBase
             return BadRequest("Invalid username or password.");
 
         return Ok(token);
+    }
+
+    [HttpGet]
+    [Authorize]
+    public IActionResult AuthEndpoint()
+    {
+        return Ok("This is the auth endpoint.");
     }
 }
