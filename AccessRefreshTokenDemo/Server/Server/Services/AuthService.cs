@@ -6,14 +6,14 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 using Server.Data;
 using Server.Models;
-using Server.Models.DTOs;
+using Server.Models.Dtos.AuthDtos;
 using Server.Services.Interfaces;
 
 namespace Server.Services;
 
 public class AuthService(AppDbContext db, IConfiguration configuration) : IAuthService
 {
-    public async Task<User?> RegisterAsync(UserDto req)
+    public async Task<User?> RegisterAsync(LoginDto req)
     {
         if (await db.Users.AnyAsync(u => u.Username == req.Username))
             return null;
@@ -23,9 +23,10 @@ public class AuthService(AppDbContext db, IConfiguration configuration) : IAuthS
         {
             Username = req.Username,
             HashedPassword = Convert.ToBase64String(
-                HashPassword(req.PlainPassword, Convert.FromBase64String(salt))
+                HashPassword(req.Password, Convert.FromBase64String(salt))
             ),
             Salt = salt,
+            Role = "User",
         };
 
         db.Users.Add(user);
@@ -34,13 +35,13 @@ public class AuthService(AppDbContext db, IConfiguration configuration) : IAuthS
         return user;
     }
 
-    public async Task<TokenResponseDto?> LoginAsync(UserDto req, string deviceId)
+    public async Task<TokenResponseDto?> LoginAsync(LoginDto req, string deviceId)
     {
         User? user = await db.Users.FirstOrDefaultAsync(u => u.Username == req.Username);
         if (
             user is null
             || !VerifyPassword(
-                req.PlainPassword,
+                req.Password,
                 user.HashedPassword,
                 Convert.FromBase64String(user.Salt)
             )
@@ -55,18 +56,22 @@ public class AuthService(AppDbContext db, IConfiguration configuration) : IAuthS
     }
 
     public async Task<TokenResponseDto?> ValidateAndReplaceRefreshTokenAsync(
-        RefreshTokenRequestDto req
+        RefreshTokenDto req,
+        string deviceId
     )
     {
+        if (!Guid.TryParse(req.UserId, out Guid userGuid))
+            return null;
+
         User? user = await db
             .Users.Include(u => u.RefreshTokens)
-            .FirstOrDefaultAsync(u => u.Id.ToString() == req.UserId);
+            .FirstOrDefaultAsync(u => u.Id == userGuid);
 
         if (user is null)
             return null;
 
         UserRefreshToken? userRefreshToken = user.RefreshTokens.FirstOrDefault(rt =>
-            rt.DeviceId == req.DeviceId && rt.RefreshToken == req.RefreshToken
+            rt.DeviceId == deviceId && rt.RefreshToken == req.RefreshToken
         );
 
         if (userRefreshToken is null)
@@ -87,6 +92,52 @@ public class AuthService(AppDbContext db, IConfiguration configuration) : IAuthS
             AccessToken = GenerateToken(user),
             RefreshToken = userRefreshToken.RefreshToken,
         };
+    }
+
+    public async Task<User?> LogoutAsync(string userId, string deviceId)
+    {
+        if (!Guid.TryParse(userId, out Guid userGuid))
+            return null;
+
+        User? user = await db
+            .Users.Include(u => u.RefreshTokens)
+            .FirstOrDefaultAsync(u => u.Id == userGuid);
+
+        if (user is null)
+            return null;
+
+        UserRefreshToken? userRefreshToken = user.RefreshTokens.FirstOrDefault(rt =>
+            rt.DeviceId == deviceId
+        );
+
+        if (userRefreshToken is not null)
+        {
+            db.UserRefreshTokens.Remove(userRefreshToken);
+            await db.SaveChangesAsync();
+        }
+
+        return user;
+    }
+
+    public async Task<User?> DeleteAsync(string userId)
+    {
+        if (!Guid.TryParse(userId, out Guid userGuid))
+            return null;
+
+        User? user = await db.Users.FindAsync(userGuid);
+
+        if (user is null)
+            return null;
+
+        IQueryable<UserRefreshToken> userRefreshTokens = db.UserRefreshTokens.Where(rt =>
+            rt.User.Id == user.Id
+        );
+
+        db.UserRefreshTokens.RemoveRange(userRefreshTokens);
+        db.Users.Remove(user);
+        await db.SaveChangesAsync();
+
+        return user;
     }
 
     private async Task<string> GenerateAndSaveRefreshTokenAsync(User user, string deviceId)
@@ -131,15 +182,6 @@ public class AuthService(AppDbContext db, IConfiguration configuration) : IAuthS
         );
 
         return new JwtSecurityTokenHandler().WriteToken(token);
-    }
-
-    private async Task<TokenResponseDto> CreateTokenResponseAsync(User user, string deviceId)
-    {
-        return new()
-        {
-            AccessToken = GenerateToken(user),
-            RefreshToken = await GenerateAndSaveRefreshTokenAsync(user, deviceId),
-        };
     }
 
     private static byte[] HashPassword(string password, byte[] salt)

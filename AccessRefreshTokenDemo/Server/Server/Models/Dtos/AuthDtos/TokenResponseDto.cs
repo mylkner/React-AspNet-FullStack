@@ -1,4 +1,4 @@
-namespace Server.Models.DTOs;
+namespace Server.Models.Dtos.AuthDtos;
 
 public class TokenResponseDto
 {
