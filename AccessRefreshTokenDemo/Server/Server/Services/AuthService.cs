@@ -57,8 +57,16 @@ public class AuthService(AppDbContext db, IConfiguration configuration) : IAuthS
     private async Task<string> GenerateAndSaveRefreshTokenAsync(User user)
     {
         string refreshToken = GenerateRandomString(32);
-        user.RefreshToken = refreshToken;
-        user.RefreshTokenExpiry = DateTime.UtcNow.AddDays(7);
+
+        UserRefreshToken userRefreshToken = new()
+        {
+            DeviceId = Guid.NewGuid().ToString(),
+            RefreshToken = refreshToken,
+            Expiry = DateTime.UtcNow.AddDays(7),
+            User = user,
+        };
+
+        db.UserRefreshTokens.Add(userRefreshToken);
         await db.SaveChangesAsync();
         return refreshToken;
     }

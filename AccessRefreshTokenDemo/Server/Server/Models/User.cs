@@ -7,6 +7,6 @@ public class User
     public string HashedPassword { get; set; } = string.Empty;
     public string Salt { get; set; } = string.Empty;
     public string Role { get; set; } = string.Empty;
-    public string? RefreshToken { get; set; }
-    public DateTime RefreshTokenExpiry { get; set; }
+
+    public List<UserRefreshToken> RefreshTokens { get; set; } = [];
 }
