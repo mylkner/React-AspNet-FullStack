@@ -76,15 +76,13 @@ public class AuthService(AppDbContext db, IConfiguration configuration) : IAuthS
     public async Task<User?> DeleteAsync(HttpContext context)
     {
         User? user =
-            await db.Users.FindAsync(
-                Guid.Parse(context.User.FindFirst(ClaimTypes.NameIdentifier)!.Value)
-            ) ?? throw new BadHttpRequestException("User not found.");
+            await db
+                .Users.Include(u => u.RefreshTokens)
+                .FirstOrDefaultAsync(u =>
+                    u.Id == Guid.Parse(context.User.FindFirst(ClaimTypes.NameIdentifier)!.Value)
+                ) ?? throw new BadHttpRequestException("User not found.");
 
-        IQueryable<UserRefreshToken> userRefreshTokens = db.UserRefreshTokens.Where(rt =>
-            rt.User.Id == user.Id
-        );
-
-        db.UserRefreshTokens.RemoveRange(userRefreshTokens);
+        db.UserRefreshTokens.RemoveRange(user.RefreshTokens);
         db.Users.Remove(user);
         await db.SaveChangesAsync();
         context.Response.Cookies.Delete("refreshToken");
@@ -103,10 +101,6 @@ public class AuthService(AppDbContext db, IConfiguration configuration) : IAuthS
                     .FirstOrDefaultAsync(rt => rt.Id == Guid.Parse(refreshToken.TokenId))
                 ?? throw new UnauthorizedAccessException("Missing refresh token from db.");
 
-            User? user =
-                await db.Users.FindAsync(userRefreshToken.User.Id)
-                ?? throw new BadHttpRequestException("User not found.");
-
             db.UserRefreshTokens.Remove(userRefreshToken);
             if (
                 userRefreshToken.Expiry <= DateTime.UtcNow
@@ -120,8 +114,8 @@ public class AuthService(AppDbContext db, IConfiguration configuration) : IAuthS
                 await db.SaveChangesAsync();
                 throw new UnauthorizedAccessException("Invalid refresh token.");
             }
-            await GenerateAndSaveRefreshTokenAsync(user, context);
-            return AuthHelpers.GenerateToken(user, configuration);
+            await GenerateAndSaveRefreshTokenAsync(userRefreshToken.User, context);
+            return AuthHelpers.GenerateToken(userRefreshToken.User, configuration);
         }
         catch (Exception ex)
         {
