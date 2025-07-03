@@ -10,17 +10,17 @@ namespace Server.Helpers;
 
 public static class AuthHelpers
 {
-    public static byte[] HashPassword(string password, byte[] salt)
+    public static byte[] HashString(string str, byte[] salt)
     {
-        using Rfc2898DeriveBytes pbkdf2 = new(password, salt, 100000, HashAlgorithmName.SHA512);
+        using Rfc2898DeriveBytes pbkdf2 = new(str, salt, 100000, HashAlgorithmName.SHA512);
         return pbkdf2.GetBytes(32);
     }
 
-    public static bool VerifyPassword(string inputtedPassword, string hashedPassword, byte[] salt)
+    public static bool VerifyHash(string toCompare, string ogHash, byte[] salt)
     {
         return CryptographicOperations.FixedTimeEquals(
-            HashPassword(inputtedPassword, salt),
-            Convert.FromBase64String(hashedPassword)
+            HashString(toCompare, salt),
+            Convert.FromBase64String(ogHash)
         );
     }
 
@@ -59,16 +59,11 @@ public static class AuthHelpers
         return new JwtSecurityTokenHandler().WriteToken(token);
     }
 
-    public static void SetRefreshCookie(
-        HttpContext context,
-        string userId,
-        string deviceId,
-        string tokenValue
-    )
+    public static void SetRefreshCookie(HttpContext context, string tokenId, string tokenValue)
     {
         context.Response.Cookies.Append(
             "refreshToken",
-            $"{userId}:{deviceId}:{tokenValue}",
+            $"{tokenId}:{tokenValue}",
             new CookieOptions
             {
                 HttpOnly = true,
@@ -79,17 +74,14 @@ public static class AuthHelpers
         );
     }
 
-    public static RefreshTokenDto? ParseRefreshToken(HttpContext context)
+    public static RefreshTokenDto ParseRefreshToken(HttpContext context)
     {
         string? cookie = context.Request.Cookies["refreshToken"];
-        if (cookie is null || cookie?.Split(":").Length != 3)
-            throw new UnauthorizedAccessException("Cookie not found or in invalid format.");
+        if (cookie is null || cookie.Split(":").Length != 2)
+            throw new UnauthorizedAccessException("Cookie not provided.");
         string[] parts = cookie.Split(":");
-        return new()
-        {
-            UserId = parts[0],
-            DeviceId = parts[1],
-            TokenValue = parts[2],
-        };
+        if (parts.Length != 2)
+            throw new UnauthorizedAccessException("Cookie in invalid format.");
+        return new() { TokenId = parts[0], TokenValue = parts[1] };
     }
 }

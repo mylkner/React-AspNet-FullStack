@@ -21,7 +21,7 @@ public class AuthService(AppDbContext db, IConfiguration configuration) : IAuthS
         {
             Username = req.Username,
             HashedPassword = Convert.ToBase64String(
-                AuthHelpers.HashPassword(req.Password, Convert.FromBase64String(salt))
+                AuthHelpers.HashString(req.Password, Convert.FromBase64String(salt))
             ),
             Salt = salt,
             Role = "User",
@@ -37,7 +37,7 @@ public class AuthService(AppDbContext db, IConfiguration configuration) : IAuthS
         User? user = await db.Users.FirstOrDefaultAsync(u => u.Username == req.Username);
         if (
             user is null
-            || !AuthHelpers.VerifyPassword(
+            || !AuthHelpers.VerifyHash(
                 req.Password,
                 user.HashedPassword,
                 Convert.FromBase64String(user.Salt)
@@ -45,13 +45,7 @@ public class AuthService(AppDbContext db, IConfiguration configuration) : IAuthS
         )
             return null;
 
-        UserRefreshToken userRt = await GenerateAndSaveRefreshTokenAsync(user);
-        AuthHelpers.SetRefreshCookie(
-            context,
-            user.Id.ToString(),
-            userRt.DeviceId,
-            userRt.RefreshToken
-        );
+        UserRefreshToken userRt = await GenerateAndSaveRefreshTokenAsync(user, context);
         return AuthHelpers.GenerateToken(user, configuration);
     }
 
@@ -65,8 +59,8 @@ public class AuthService(AppDbContext db, IConfiguration configuration) : IAuthS
                 ) ?? throw new BadHttpRequestException("User not found.");
 
         RefreshTokenDto refreshToken = AuthHelpers.ParseRefreshToken(context)!;
-        UserRefreshToken? userRefreshToken = user.RefreshTokens.FirstOrDefault(rt =>
-            rt.DeviceId == refreshToken.DeviceId
+        UserRefreshToken? userRefreshToken = user.RefreshTokens.Find(rt =>
+            rt.Id == Guid.Parse(refreshToken.TokenId)
         );
 
         if (userRefreshToken is not null)
@@ -103,34 +97,21 @@ public class AuthService(AppDbContext db, IConfiguration configuration) : IAuthS
         {
             RefreshTokenDto refreshToken = AuthHelpers.ParseRefreshToken(context)!;
 
-            User? user =
-                await db
-                    .Users.Include(u => u.RefreshTokens)
-                    .FirstOrDefaultAsync(u => u.Id == Guid.Parse(refreshToken.UserId))
-                ?? throw new BadHttpRequestException("User not found.");
-
             UserRefreshToken? userRefreshToken =
-                user.RefreshTokens.FirstOrDefault(rt => rt.DeviceId == refreshToken.DeviceId)
+                await db.UserRefreshTokens.FindAsync(Guid.Parse(refreshToken.TokenId))
                 ?? throw new UnauthorizedAccessException("Missing refresh token from db.");
 
-            if (
-                userRefreshToken.Expiry <= DateTime.UtcNow
-                || userRefreshToken.RefreshToken != refreshToken.TokenValue
-            )
+            User? user =
+                await db.Users.FindAsync(userRefreshToken.User.Id)
+                ?? throw new BadHttpRequestException("User not found.");
+
+            db.UserRefreshTokens.Remove(userRefreshToken);
+            if (userRefreshToken.Expiry <= DateTime.UtcNow)
             {
-                db.UserRefreshTokens.Remove(userRefreshToken);
                 await db.SaveChangesAsync();
                 throw new UnauthorizedAccessException("Invalid refresh token.");
             }
-
-            userRefreshToken.RefreshToken = AuthHelpers.GenerateRandomString(32);
-            await db.SaveChangesAsync();
-            AuthHelpers.SetRefreshCookie(
-                context,
-                user.Id.ToString(),
-                userRefreshToken.DeviceId,
-                userRefreshToken.RefreshToken
-            );
+            await GenerateAndSaveRefreshTokenAsync(user, context);
             return AuthHelpers.GenerateToken(user, configuration);
         }
         catch (Exception ex)
@@ -139,18 +120,29 @@ public class AuthService(AppDbContext db, IConfiguration configuration) : IAuthS
         }
     }
 
-    private async Task<UserRefreshToken> GenerateAndSaveRefreshTokenAsync(User user)
+    private async Task<UserRefreshToken> GenerateAndSaveRefreshTokenAsync(
+        User user,
+        HttpContext context
+    )
     {
+        string salt = AuthHelpers.GenerateRandomString(16);
+        string refreshTokenPlain = AuthHelpers.GenerateRandomString(32);
+        byte[] hashedRefreshToken = AuthHelpers.HashString(
+            refreshTokenPlain,
+            Convert.FromBase64String(salt)
+        );
+
         UserRefreshToken userRefreshToken = new()
         {
-            DeviceId = AuthHelpers.GenerateRandomString(16),
-            RefreshToken = AuthHelpers.GenerateRandomString(32),
+            RefreshToken = Convert.ToBase64String(hashedRefreshToken),
+            Salt = salt,
             Expiry = DateTime.UtcNow.AddDays(7),
             User = user,
         };
 
         db.UserRefreshTokens.Add(userRefreshToken);
         await db.SaveChangesAsync();
+        AuthHelpers.SetRefreshCookie(context, userRefreshToken.Id.ToString(), refreshTokenPlain);
         return userRefreshToken;
     }
 }
