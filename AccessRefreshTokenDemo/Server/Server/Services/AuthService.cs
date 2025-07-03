@@ -53,9 +53,10 @@ public class AuthService(AppDbContext db, IConfiguration configuration) : IAuthS
 
     public async Task<User?> LogoutAsync(UserDeviceIdsDto req, HttpContext context)
     {
-        if (context.User.FindFirst(ClaimTypes.NameIdentifier)?.Value != req.UserId)
-            return null;
-        if (!Guid.TryParse(req.UserId, out Guid userGuid))
+        if (
+            context.User.FindFirst(ClaimTypes.NameIdentifier)?.Value != req.UserId
+            || !Guid.TryParse(req.UserId, out Guid userGuid)
+        )
             return null;
 
         User? user = await db
@@ -82,9 +83,10 @@ public class AuthService(AppDbContext db, IConfiguration configuration) : IAuthS
 
     public async Task<User?> DeleteAsync(DeleteDto req, HttpContext context)
     {
-        if (context.User.FindFirst(ClaimTypes.NameIdentifier)?.Value != req.UserId)
-            return null;
-        if (!Guid.TryParse(req.UserId, out Guid userGuid))
+        if (
+            context.User.FindFirst(ClaimTypes.NameIdentifier)?.Value != req.UserId
+            || !Guid.TryParse(req.UserId, out Guid userGuid)
+        )
             return null;
 
         User? user = await db.Users.FindAsync(userGuid);
@@ -116,11 +118,8 @@ public class AuthService(AppDbContext db, IConfiguration configuration) : IAuthS
         User? user = await db
             .Users.Include(u => u.RefreshTokens)
             .FirstOrDefaultAsync(u => u.Id == userGuid);
-        if (user is null)
-            return null;
 
-        string? refreshToken = context.Request.Cookies["refreshToken"];
-        if (string.IsNullOrEmpty(refreshToken))
+        if (user is null)
             return null;
 
         UserRefreshToken? userRefreshToken = user.RefreshTokens.FirstOrDefault(rt =>
@@ -135,7 +134,7 @@ public class AuthService(AppDbContext db, IConfiguration configuration) : IAuthS
 
         if (
             userRefreshToken.Expiry <= DateTime.UtcNow
-            || userRefreshToken.RefreshToken != refreshToken
+            || userRefreshToken.RefreshToken != context.Request.Cookies["refreshToken"]
         )
         {
             db.UserRefreshTokens.Remove(userRefreshToken);
@@ -184,10 +183,7 @@ public class AuthService(AppDbContext db, IConfiguration configuration) : IAuthS
         );
 
         if (existingToken is not null)
-        {
             db.UserRefreshTokens.Remove(existingToken);
-            await db.SaveChangesAsync();
-        }
 
         string refreshToken = GenerateRandomString(32);
 
