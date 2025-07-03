@@ -98,7 +98,9 @@ public class AuthService(AppDbContext db, IConfiguration configuration) : IAuthS
             RefreshTokenDto refreshToken = AuthHelpers.ParseRefreshToken(context)!;
 
             UserRefreshToken? userRefreshToken =
-                await db.UserRefreshTokens.FindAsync(Guid.Parse(refreshToken.TokenId))
+                await db
+                    .UserRefreshTokens.Include(rt => rt.User)
+                    .FirstOrDefaultAsync(rt => rt.Id == Guid.Parse(refreshToken.TokenId))
                 ?? throw new UnauthorizedAccessException("Missing refresh token from db.");
 
             User? user =
@@ -106,7 +108,14 @@ public class AuthService(AppDbContext db, IConfiguration configuration) : IAuthS
                 ?? throw new BadHttpRequestException("User not found.");
 
             db.UserRefreshTokens.Remove(userRefreshToken);
-            if (userRefreshToken.Expiry <= DateTime.UtcNow)
+            if (
+                userRefreshToken.Expiry <= DateTime.UtcNow
+                || !AuthHelpers.VerifyHash(
+                    refreshToken.TokenValue,
+                    userRefreshToken.RefreshToken,
+                    Convert.FromBase64String(userRefreshToken.Salt)
+                )
+            )
             {
                 await db.SaveChangesAsync();
                 throw new UnauthorizedAccessException("Invalid refresh token.");
