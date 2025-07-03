@@ -1,29 +1,26 @@
-using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
-using System.Security.Cryptography;
-using System.Text;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.IdentityModel.Tokens;
 using Server.Data;
-using Server.Models;
-using Server.Models.Dtos.AuthDtos;
+using Server.Helpers;
+using Server.Models.Db;
+using Server.Models.Dtos;
 using Server.Services.Interfaces;
 
 namespace Server.Services;
 
 public class AuthService(AppDbContext db, IConfiguration configuration) : IAuthService
 {
-    public async Task<User?> RegisterAsync(RegisterDto req)
+    public async Task<User?> RegisterAsync(UserDto req)
     {
         if (await db.Users.AnyAsync(u => u.Username == req.Username))
             return null;
 
-        string salt = GenerateRandomString(16);
+        string salt = AuthHelpers.GenerateRandomString(16);
         User user = new()
         {
             Username = req.Username,
             HashedPassword = Convert.ToBase64String(
-                HashPassword(req.Password, Convert.FromBase64String(salt))
+                AuthHelpers.HashPassword(req.Password, Convert.FromBase64String(salt))
             ),
             Salt = salt,
             Role = "User",
@@ -31,43 +28,44 @@ public class AuthService(AppDbContext db, IConfiguration configuration) : IAuthS
 
         db.Users.Add(user);
         await db.SaveChangesAsync();
-
         return user;
     }
 
-    public async Task<string?> LoginAsync(LoginDto req, HttpContext context)
+    public async Task<string?> LoginAsync(UserDto req, HttpContext context)
     {
         User? user = await db.Users.FirstOrDefaultAsync(u => u.Username == req.Username);
         if (
             user is null
-            || !VerifyPassword(
+            || !AuthHelpers.VerifyPassword(
                 req.Password,
                 user.HashedPassword,
                 Convert.FromBase64String(user.Salt)
             )
         )
             return null;
-        SetRefreshCookie(context, await GenerateAndSaveRefreshTokenAsync(user, req.DeviceId));
-        return GenerateToken(user);
+
+        UserRefreshToken userRt = await GenerateAndSaveRefreshTokenAsync(user);
+        AuthHelpers.SetRefreshCookie(
+            context,
+            user.Id.ToString(),
+            userRt.DeviceId,
+            userRt.RefreshToken
+        );
+        return AuthHelpers.GenerateToken(user, configuration);
     }
 
-    public async Task<User?> LogoutAsync(UserDeviceIdsDto req, HttpContext context)
+    public async Task<User?> LogoutAsync(HttpContext context)
     {
-        if (
-            context.User.FindFirst(ClaimTypes.NameIdentifier)?.Value != req.UserId
-            || !Guid.TryParse(req.UserId, out Guid userGuid)
-        )
-            return null;
+        User? user =
+            await db
+                .Users.Include(u => u.RefreshTokens)
+                .FirstOrDefaultAsync(u =>
+                    u.Id == Guid.Parse(context.User.FindFirst(ClaimTypes.NameIdentifier)!.Value)
+                ) ?? throw new BadHttpRequestException("User not found.");
 
-        User? user = await db
-            .Users.Include(u => u.RefreshTokens)
-            .FirstOrDefaultAsync(u => u.Id == userGuid);
-
-        if (user is null)
-            return null;
-
+        RefreshTokenDto refreshToken = AuthHelpers.ParseRefreshToken(context)!;
         UserRefreshToken? userRefreshToken = user.RefreshTokens.FirstOrDefault(rt =>
-            rt.DeviceId == req.DeviceId
+            rt.DeviceId == refreshToken.DeviceId
         );
 
         if (userRefreshToken is not null)
@@ -77,22 +75,15 @@ public class AuthService(AppDbContext db, IConfiguration configuration) : IAuthS
         }
 
         context.Response.Cookies.Delete("refreshToken");
-
         return user;
     }
 
-    public async Task<User?> DeleteAsync(DeleteDto req, HttpContext context)
+    public async Task<User?> DeleteAsync(HttpContext context)
     {
-        if (
-            context.User.FindFirst(ClaimTypes.NameIdentifier)?.Value != req.UserId
-            || !Guid.TryParse(req.UserId, out Guid userGuid)
-        )
-            return null;
-
-        User? user = await db.Users.FindAsync(userGuid);
-
-        if (user is null)
-            return null;
+        User? user =
+            await db.Users.FindAsync(
+                Guid.Parse(context.User.FindFirst(ClaimTypes.NameIdentifier)!.Value)
+            ) ?? throw new BadHttpRequestException("User not found.");
 
         IQueryable<UserRefreshToken> userRefreshTokens = db.UserRefreshTokens.Where(rt =>
             rt.User.Id == user.Id
@@ -101,135 +92,65 @@ public class AuthService(AppDbContext db, IConfiguration configuration) : IAuthS
         db.UserRefreshTokens.RemoveRange(userRefreshTokens);
         db.Users.Remove(user);
         await db.SaveChangesAsync();
-
         context.Response.Cookies.Delete("refreshToken");
-
         return user;
     }
 
-    public async Task<string?> ValidateAndReplaceRefreshTokenAsync(
-        UserDeviceIdsDto req,
-        HttpContext context
-    )
+    public async Task<string?> ValidateAndReplaceRefreshTokenAsync(HttpContext context)
     {
-        if (!Guid.TryParse(req.UserId, out Guid userGuid))
-            return null;
-
-        User? user = await db
-            .Users.Include(u => u.RefreshTokens)
-            .FirstOrDefaultAsync(u => u.Id == userGuid);
-
-        if (user is null)
-            return null;
-
-        UserRefreshToken? userRefreshToken = user.RefreshTokens.FirstOrDefault(rt =>
-            rt.DeviceId == req.DeviceId
-        );
-
-        if (userRefreshToken is null)
-            return null;
-
-        if (
-            userRefreshToken.Expiry <= DateTime.UtcNow
-            || userRefreshToken.RefreshToken != context.Request.Cookies["refreshToken"]
-        )
+        try
         {
-            db.UserRefreshTokens.Remove(userRefreshToken);
+            RefreshTokenDto refreshToken = AuthHelpers.ParseRefreshToken(context)!;
+
+            User? user =
+                await db
+                    .Users.Include(u => u.RefreshTokens)
+                    .FirstOrDefaultAsync(u => u.Id == Guid.Parse(refreshToken.UserId))
+                ?? throw new BadHttpRequestException("User not found.");
+
+            UserRefreshToken? userRefreshToken =
+                user.RefreshTokens.FirstOrDefault(rt => rt.DeviceId == refreshToken.DeviceId)
+                ?? throw new UnauthorizedAccessException("Missing refresh token from db.");
+
+            if (
+                userRefreshToken.Expiry <= DateTime.UtcNow
+                || userRefreshToken.RefreshToken != refreshToken.TokenValue
+            )
+            {
+                db.UserRefreshTokens.Remove(userRefreshToken);
+                await db.SaveChangesAsync();
+                throw new UnauthorizedAccessException("Invalid refresh token.");
+            }
+
+            userRefreshToken.RefreshToken = AuthHelpers.GenerateRandomString(32);
             await db.SaveChangesAsync();
+            AuthHelpers.SetRefreshCookie(
+                context,
+                user.Id.ToString(),
+                userRefreshToken.DeviceId,
+                userRefreshToken.RefreshToken
+            );
+            return AuthHelpers.GenerateToken(user, configuration);
+        }
+        catch
+        {
+            context.Response.Cookies.Delete("refreshToken");
             return null;
         }
-
-        userRefreshToken.RefreshToken = GenerateRandomString(32);
-        await db.SaveChangesAsync();
-        SetRefreshCookie(context, userRefreshToken.RefreshToken);
-        return GenerateToken(user);
     }
 
-    private string GenerateToken(User user)
+    private async Task<UserRefreshToken> GenerateAndSaveRefreshTokenAsync(User user)
     {
-        List<Claim> claims =
-        [
-            new(ClaimTypes.NameIdentifier, user.Id.ToString()),
-            new(ClaimTypes.Name, user.Username),
-            new(ClaimTypes.Role, user.Role),
-        ];
-
-        SigningCredentials creds = new(
-            new SymmetricSecurityKey(
-                Encoding.UTF8.GetBytes(configuration.GetValue<string>("JWT:Key")!)
-            ),
-            SecurityAlgorithms.HmacSha512
-        );
-
-        JwtSecurityToken token = new(
-            issuer: configuration.GetValue<string>("JWT:Issuer"),
-            audience: configuration.GetValue<string>("JWT:Audience"),
-            claims: claims,
-            expires: DateTime.UtcNow.AddHours(1),
-            signingCredentials: creds
-        );
-
-        return new JwtSecurityTokenHandler().WriteToken(token);
-    }
-
-    private async Task<string> GenerateAndSaveRefreshTokenAsync(User user, string deviceId)
-    {
-        UserRefreshToken? existingToken = await db.UserRefreshTokens.FirstOrDefaultAsync(rt =>
-            rt.DeviceId == deviceId && rt.User.Id == user.Id
-        );
-
-        if (existingToken is not null)
-            db.UserRefreshTokens.Remove(existingToken);
-
-        string refreshToken = GenerateRandomString(32);
-
         UserRefreshToken userRefreshToken = new()
         {
-            DeviceId = deviceId,
-            RefreshToken = refreshToken,
+            DeviceId = AuthHelpers.GenerateRandomString(16),
+            RefreshToken = AuthHelpers.GenerateRandomString(32),
             Expiry = DateTime.UtcNow.AddDays(7),
             User = user,
         };
 
         db.UserRefreshTokens.Add(userRefreshToken);
         await db.SaveChangesAsync();
-        return refreshToken;
-    }
-
-    private static void SetRefreshCookie(HttpContext context, string refreshToken)
-    {
-        context.Response.Cookies.Append(
-            "refreshToken",
-            refreshToken,
-            new CookieOptions
-            {
-                HttpOnly = true,
-                Secure = true,
-                SameSite = SameSiteMode.None,
-                Expires = DateTimeOffset.UtcNow.AddDays(7),
-            }
-        );
-    }
-
-    private static byte[] HashPassword(string password, byte[] salt)
-    {
-        using Rfc2898DeriveBytes pbkdf2 = new(password, salt, 100000, HashAlgorithmName.SHA512);
-        return pbkdf2.GetBytes(32);
-    }
-
-    private static bool VerifyPassword(string inputtedPassword, string hashedPassword, byte[] salt)
-    {
-        return CryptographicOperations.FixedTimeEquals(
-            HashPassword(inputtedPassword, salt),
-            Convert.FromBase64String(hashedPassword)
-        );
-    }
-
-    private static string GenerateRandomString(int size)
-    {
-        byte[] rand = new byte[size];
-        using var rng = RandomNumberGenerator.Create();
-        rng.GetBytes(rand);
-        return Convert.ToBase64String(rand);
+        return userRefreshToken;
     }
 }
