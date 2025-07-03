@@ -60,7 +60,10 @@ public class AuthController(IAuthService authService) : ControllerBase
             HttpContext
         );
         if (jwt is null)
+        {
+            Response.Cookies.Delete("refreshToken");
             return Unauthorized("Invalid refresh token.");
+        }
 
         return Ok(jwt);
     }
