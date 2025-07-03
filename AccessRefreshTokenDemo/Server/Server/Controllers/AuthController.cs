@@ -1,7 +1,7 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
-using Server.Models;
-using Server.Models.Dtos.AuthDtos;
+using Server.Models.Db;
+using Server.Models.Dtos;
 using Server.Services.Interfaces;
 
 namespace Server.Controllers;
@@ -11,9 +11,9 @@ namespace Server.Controllers;
 public class AuthController(IAuthService authService) : ControllerBase
 {
     [HttpPost("register")]
-    public async Task<ActionResult<string>> Register(RegisterDto registerDto)
+    public async Task<ActionResult<string>> Register(UserDto userDto)
     {
-        User? user = await authService.RegisterAsync(registerDto);
+        User? user = await authService.RegisterAsync(userDto);
         if (user is null)
             return BadRequest("Username already exists.");
 
@@ -21,9 +21,9 @@ public class AuthController(IAuthService authService) : ControllerBase
     }
 
     [HttpPost("login")]
-    public async Task<ActionResult<string>> Login(LoginDto loginDto)
+    public async Task<ActionResult<string>> Login(UserDto userDto)
     {
-        string? jwt = await authService.LoginAsync(loginDto, HttpContext);
+        string? jwt = await authService.LoginAsync(userDto, HttpContext);
         if (jwt is null)
             return BadRequest("Invalid username or password.");
 
@@ -32,39 +32,24 @@ public class AuthController(IAuthService authService) : ControllerBase
 
     [HttpPost("logout")]
     [Authorize]
-    public async Task<ActionResult<string>> Logout(UserDeviceIdsDto userDeviceIdsDto)
+    public async Task<IActionResult> Logout()
     {
-        User? user = await authService.LogoutAsync(userDeviceIdsDto, HttpContext);
-        if (user is null)
-            return BadRequest("Invalid user ID.");
-
+        await authService.LogoutAsync(HttpContext);
         return NoContent();
     }
 
     [HttpDelete("delete")]
     [Authorize]
-    public async Task<ActionResult<string>> Delete(DeleteDto deleteDto)
+    public async Task<IActionResult> Delete()
     {
-        User? user = await authService.DeleteAsync(deleteDto, HttpContext);
-        if (user is null)
-            return BadRequest("Invalid user ID.");
-
+        await authService.DeleteAsync(HttpContext);
         return NoContent();
     }
 
     [HttpPost("refresh-token")]
-    public async Task<ActionResult<string>> RefreshToken(UserDeviceIdsDto userDeviceIdsDto)
+    public async Task<ActionResult<string>> RefreshToken()
     {
-        string? jwt = await authService.ValidateAndReplaceRefreshTokenAsync(
-            userDeviceIdsDto,
-            HttpContext
-        );
-        if (jwt is null)
-        {
-            Response.Cookies.Delete("refreshToken");
-            return Unauthorized("Invalid refresh token.");
-        }
-
+        string? jwt = await authService.ValidateAndReplaceRefreshTokenAsync(HttpContext);
         return Ok(jwt);
     }
 
