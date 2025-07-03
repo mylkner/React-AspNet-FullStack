@@ -30,7 +30,7 @@ public class AuthController(IAuthService authService) : ControllerBase
         return Ok(jwt);
     }
 
-    [HttpPost("logout")]
+    [HttpGet("logout")]
     [Authorize]
     public async Task<IActionResult> Logout()
     {
@@ -46,7 +46,7 @@ public class AuthController(IAuthService authService) : ControllerBase
         return NoContent();
     }
 
-    [HttpPost("refresh-token")]
+    [HttpGet("refresh-token")]
     public async Task<ActionResult<string>> RefreshToken()
     {
         string? jwt = await authService.ValidateAndReplaceRefreshTokenAsync(HttpContext);
