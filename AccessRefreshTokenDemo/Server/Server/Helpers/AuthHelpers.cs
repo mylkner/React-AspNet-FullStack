@@ -76,9 +76,9 @@ public static class AuthHelpers
 
     public static RefreshTokenDto ParseRefreshToken(HttpContext context)
     {
-        string? cookie = context.Request.Cookies["refreshToken"];
-        if (cookie is null || cookie.Split(":").Length != 2)
-            throw new UnauthorizedAccessException("Cookie not provided.");
+        string? cookie =
+            context.Request.Cookies["refreshToken"]
+            ?? throw new UnauthorizedAccessException("Cookie not provided.");
         string[] parts = cookie.Split(":");
         if (parts.Length != 2)
             throw new UnauthorizedAccessException("Cookie in invalid format.");
