@@ -4,6 +4,7 @@ using Server.Data;
 using Server.Helpers;
 using Server.Models.Db;
 using Server.Models.Dtos;
+using Server.Models.Errors;
 using Server.Services.Interfaces;
 
 namespace Server.Services;
@@ -132,10 +133,9 @@ public class AuthService(AppDbContext db, IConfiguration configuration) : IAuthS
             );
             return AuthHelpers.GenerateToken(user, configuration);
         }
-        catch
+        catch (Exception ex)
         {
-            context.Response.Cookies.Delete("refreshToken");
-            return null;
+            throw new RefreshTokenError(ex);
         }
     }
 

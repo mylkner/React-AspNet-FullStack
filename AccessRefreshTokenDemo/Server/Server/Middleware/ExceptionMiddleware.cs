@@ -1,6 +1,7 @@
 using System.Net;
 using Microsoft.AspNetCore.Diagnostics;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.IdentityModel.Tokens;
 using Server.Models.Errors;
 
 namespace Server.Middleware;
@@ -23,18 +24,28 @@ public class ExceptionMiddleware(IHostEnvironment env) : IExceptionHandler
         else
         {
             errorRes.Detail = exception.Message;
-            errorRes.Status = exception switch
-            {
-                BadHttpRequestException => (int)HttpStatusCode.BadRequest,
-                UnauthorizedAccessException => (int)HttpStatusCode.Unauthorized,
-                ForbiddenException => (int)HttpStatusCode.Forbidden,
-                NotFoundException => (int)HttpStatusCode.NotFound,
-                _ => (int)HttpStatusCode.InternalServerError,
-            };
+            errorRes.Status = GetStatusCode(exception);
             errorRes.Title = "An error has occured.";
         }
 
+        if (exception is RefreshTokenError)
+            httpContext.Response.Cookies.Delete("refreshToken");
+
         await httpContext.Response.WriteAsJsonAsync(errorRes, cancellationToken: cancellationToken);
         return true;
+    }
+
+    private static int GetStatusCode(Exception ex)
+    {
+        if (ex is RefreshTokenError refreshEx)
+            ex = refreshEx.OriginalEx;
+        return ex switch
+        {
+            BadHttpRequestException => (int)HttpStatusCode.BadRequest,
+            UnauthorizedAccessException => (int)HttpStatusCode.Unauthorized,
+            ForbiddenException => (int)HttpStatusCode.Forbidden,
+            NotFoundException => (int)HttpStatusCode.NotFound,
+            _ => (int)HttpStatusCode.InternalServerError,
+        };
     }
 }
