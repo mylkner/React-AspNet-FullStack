@@ -13,11 +13,10 @@ function App() {
             <Route path="/" element={<Login />} />
             <Route path="/register" element={<Register />} />
             <Route element={<AuthLayout />}>
-                <Route path="/dashboard" element={<Dashboard />}>
-                    <Route path="non-admin" element={<NonAdminPage />} />
-                    <Route element={<AdminLayout />}>
-                        <Route path="admin-page" element={<AdminPage />} />
-                    </Route>
+                <Route path="/dashboard" element={<Dashboard />} />
+                <Route path="/non-admin" element={<NonAdminPage />} />
+                <Route element={<AdminLayout />}>
+                    <Route path="/admin" element={<AdminPage />} />
                 </Route>
             </Route>
         </Routes>
