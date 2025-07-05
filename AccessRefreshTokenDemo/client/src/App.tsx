@@ -4,6 +4,7 @@ import Register from "./pages/Register";
 import AuthLayout from "./routes/AuthLayout";
 import AdminPage from "./pages/AdminPage";
 import NonAdminPage from "./pages/NonAdminPage";
+import AdminLayout from "./routes/AdminLayout";
 
 function App() {
     return (
@@ -13,7 +14,9 @@ function App() {
             <Route element={<AuthLayout />}>
                 <Route path="/UserHome.tsx">
                     <Route path="NonAdminPage.tsx" element={<NonAdminPage />} />
-                    <Route path="AdminPage.tsx" element={<AdminPage />} />
+                    <Route element={<AdminLayout />}>
+                        <Route path="AdminPage.tsx" element={<AdminPage />} />
+                    </Route>
                 </Route>
             </Route>
         </Routes>
