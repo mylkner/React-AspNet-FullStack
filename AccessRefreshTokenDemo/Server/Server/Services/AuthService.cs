@@ -45,7 +45,7 @@ public class AuthService(AppDbContext db, IConfiguration configuration) : IAuthS
         )
             return null;
 
-        UserRefreshToken userRt = await GenerateAndSaveRefreshTokenAsync(user, context);
+        await GenerateAndSaveRefreshTokenAsync(user, context);
         return AuthHelpers.GenerateToken(user, configuration);
     }
 
